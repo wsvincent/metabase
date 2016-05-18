@@ -13,7 +13,7 @@
             [metabase.query-processor :as qp]
             metabase.query-processor.interface
             [metabase.util :as u]
-            [metabase.util.korma-extensions :as kx])
+            [metabase.util.honeysql-extensions :as hx])
   (:import java.sql.Timestamp
            java.util.Date
            (metabase.query_processor.interface AgFieldRef
@@ -41,7 +41,7 @@
   "Generate a FORM `AS` FIELD alias using the name information of FIELD."
   [form field]
   (if-let [alias (sql/field->alias (driver) field)]
-    [form alias]
+    [form (hx/qualify-and-escape-dots alias)]
     form))
 
 ;; TODO - Consider moving this into query processor interface and making it a method on `ExpressionRef` instead ?
@@ -72,7 +72,7 @@
 
   Field
   (formatted [{:keys [schema-name table-name special-type field-name]}]
-    (let [field (keyword (hsql/qualify schema-name table-name field-name))]
+    (let [field (keyword (hx/qualify-and-escape-dots schema-name table-name field-name))]
       (case special-type
         :timestamp_seconds      (sql/unix-timestamp->timestamp (driver) field :seconds)
         :timestamp_milliseconds (sql/unix-timestamp->timestamp (driver) field :milliseconds)
@@ -187,11 +187,10 @@
   "Apply expanded query `join-tables` clause to HONEYSQL-FORM. Default implementation of `apply-join-tables` for SQL drivers."
   [_ honeysql-form {join-tables :join-tables, {source-table-name :name, source-schema :schema} :source-table}]
   (loop [honeysql-form honeysql-form, [{:keys [table-name pk-field source-field schema]} & more] join-tables]
-    (let [table-name        (hsql/qualify schema table-name)
-          source-table-name (hsql/qualify source-schema source-table-name)
-          honeysql-form     (h/merge-left-join honeysql-form table-name
-                                               [:= (hsql/qualify source-table-name (:field-name source-field))
-                                                   (hsql/qualify table-name        (:field-name pk-field))])]
+    (let [honeysql-form (h/merge-left-join honeysql-form
+                          (hx/qualify-and-escape-dots schema table-name)
+                          [:= (hx/qualify-and-escape-dots source-schema source-table-name (:field-name source-field))
+                              (hx/qualify-and-escape-dots schema        table-name        (:field-name pk-field))])]
       (if (seq more)
         (recur honeysql-form more)
         honeysql-form))))
@@ -242,7 +241,7 @@
 ;; TODO - make this a protocol method ?
 (defn- apply-source-table [_ honeysql-form {{table-name :name, schema :schema} :source-table}]
   {:pre [table-name]}
-  (h/from honeysql-form (hsql/qualify schema table-name)))
+  (h/from honeysql-form (hx/qualify-and-escape-dots schema table-name)))
 
 (def ^:private clause-handlers
   {:aggregation  #'sql/apply-aggregation ; use the vars rather than the functions themselves because them implementation
@@ -277,9 +276,10 @@
   "Convert HONEYSQL-FORM to a vector of SQL string and params, like you'd pass to JDBC."
   [honeysql-form]
   {:pre [(map? honeysql-form)]}
-  (hsql/format honeysql-form
-    :quoting             (sql/quote-style (driver))
-    :allow-dashed-names? true))
+  (binding [hformat/*subquery?* false]
+    (hsql/format honeysql-form
+      :quoting             (sql/quote-style (driver))
+      :allow-dashed-names? true)))
 
 (defn mbql->native
   "Transpile MBQL query into a native SQL statement."
@@ -303,12 +303,11 @@
 (defn- query!
   "Run the query itself."
   [{sql :query, params :params} connection]
-  (let [statement (if params
-                    (into [sql] params)
-                    sql)]
-    (let [[columns & rows] (jdbc/query connection statement, :identifiers identity, :as-arrays? true)]
-      {:rows    rows
-       :columns columns})))
+  (let [sql              (hx/unescape-dots sql)
+        statement        (into [sql] params)
+        [columns & rows] (jdbc/query connection statement, :identifiers identity, :as-arrays? true)]
+    {:rows    rows
+     :columns columns}))
 
 (defn- exception->nice-error-message ^String [^java.sql.SQLException e]
   (or (->> (.getMessage e)     ; error message comes back like 'Column "ZID" not found; SQL statement: ... [error-code]' sometimes
@@ -321,20 +320,24 @@
        (catch java.sql.SQLException e
          (throw (Exception. (exception->nice-error-message e))))))
 
+(defn- do-with-auto-commit-disabled
+  "Disable auto-commit for this transaction, that way shady queries are unable to modify the database; execute F in a try-finally block.
+   In the `finally`, rollback any changes made during this transaction just to be extra-double-sure JDBC doesn't try to commit them automatically for us."
+  {:style/indent 1}
+  [{^java.sql.Connection connection :connection}, f]
+  (.setAutoCommit connection false)
+  (try (f)
+       (finally (.rollback connection))))
+
 ;; TODO - maybe this should be called `execute-query!` ?
 (defn execute-query
   "Process and run a native (raw SQL) QUERY."
   [driver {:keys [database settings], query :native}]
   (do-with-try-catch
     (fn []
-      (let [db-conn (sql/db->jdbc-connection-spec database)]
-        (jdbc/with-db-transaction [t-conn db-conn]
-          (let [^java.sql.Connection jdbc-connection (:connection t-conn)]
-            ;; Disable auto-commit for this transaction, that way shady queries are unable to modify the database
-            (.setAutoCommit jdbc-connection false)
-            (try
-              (maybe-set-timezone! driver settings t-conn)
-              (query! query t-conn)
-
-              ;; Rollback any changes made during this transaction just to be extra-double-sure JDBC doesn't try to commit them automatically for us
-              (finally (.rollback jdbc-connection)))))))))
+      (let [db-connection (sql/db->jdbc-connection-spec database)]
+        (jdbc/with-db-transaction [transaction-connection db-connection]
+          (do-with-auto-commit-disabled transaction-connection
+            (fn []
+              (maybe-set-timezone! driver settings transaction-connection)
+              (query! query transaction-connection))))))))

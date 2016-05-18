@@ -4,6 +4,7 @@
             [clojure.string :as s]
             [clojure.tools.logging :as log]
             (honeysql [core :as hsql]
+                      [format :as hformat]
                       [helpers :as h])
             (korma [core :as k]
                    [db :as kdb])
@@ -13,6 +14,7 @@
             (metabase.test.data [datasets :as datasets]
                                 [interface :as i])
             [metabase.util :as u]
+            [metabase.util.honeysql-extensions :as hx]
             [metabase.util.korma-extensions :as kx])
   (:import clojure.lang.Keyword
            (metabase.test.data.interface DatabaseDefinition
@@ -209,7 +211,7 @@
 (defn- do-insert!
   "Insert ROWS-OR-ROWS into TABLE-NAME for the DRIVER database defined by SPEC."
   [driver spec table-name row-or-rows]
-  (let [prepare-key (comp keyword (partial sql/prepare-identifier driver) name)
+  (let [prepare-key (comp keyword hx/qualify-and-escape-dots (partial sql/prepare-identifier driver) name)
         rows        (if (sequential? row-or-rows)
                       row-or-rows
                       [row-or-rows])
@@ -219,10 +221,15 @@
         hsql-form   (-> (apply h/columns (map prepare-key columns))
                         (h/insert-into (prepare-key table-name))
                         (h/values values))
-        sql+args    (hsql/format hsql-form
-                      :quoting             (sql/quote-style driver)
-                      :allow-dashed-names? true)]
-    (jdbc/execute! spec sql+args)))
+        sql+args    (binding [hformat/*subquery?* false]
+                      (hsql/format hsql-form
+                        :quoting             (sql/quote-style driver)
+                        :allow-dashed-names? true))]
+    (try (jdbc/execute! spec (hx/unescape-dots sql+args))
+         (catch java.sql.SQLException e
+           (println (u/format-color 'red "INSERT FAILED:"))
+           (jdbc/print-sql-exception-chain e)
+           (throw e)))))
 
 (defn make-load-data-fn
   "Create a `load-data!` function. This creates a function to actually insert a row or rows, wraps it with any WRAP-INSERT-FNS,
@@ -333,11 +340,18 @@
 
 ;;; ## Various Util Fns
 
-(defn execute-when-testing!
-  "Execute a prepared SQL-AND-ARGS against Database with spec returned by GET-CONNECTION-SPEC only when running tests against ENGINE.
-   Useful for doing engine-specific setup or teardown."
-  [engine get-connection-spec & sql-and-args]
+(defn- do-when-testing! [jdbc-fn engine get-connection-spec & sql-and-args]
   (datasets/when-testing-engine engine
     (println (u/format-color 'blue "[%s] %s" (name engine) (first sql-and-args)))
-    (jdbc/execute! (get-connection-spec) sql-and-args)
+    (jdbc-fn (get-connection-spec) sql-and-args)
     (println (u/format-color 'blue "[OK]"))))
+
+(def ^{:arglists '([engine get-connection-spec & sql-and-args]), :style/indent 2} execute-when-testing!
+  "Execute a prepared SQL-AND-ARGS against Database with spec returned by GET-CONNECTION-SPEC only when running tests against ENGINE.
+   Useful for doing engine-specific setup or teardown."
+  (partial do-when-testing! jdbc/execute!))
+
+(def ^{:arglists '([engine get-connection-spec & sql-and-args]), :style/indent 2} query-when-testing!
+  "Execute a prepared SQL-AND-ARGS **query** against Database with spec returned by GET-CONNECTION-SPEC only when running tests against ENGINE.
+   Useful for doing engine-specific setup or teardown where `execute-when-testing!` won't work because the query returns results."
+  (partial do-when-testing! jdbc/query))
