@@ -305,10 +305,6 @@
              :alias-delimiter " AS "
              :subprotocol     ""}})
 
-(defn- entity [dataset-id table-name]
-  (-> (k/create-entity (k/raw (format "[%s.%s]" dataset-id table-name)))
-      (k/database korma-db)))
-
 ;; Make the dataset-id the "schema" of every field or table in the query because otherwise BigQuery can't figure out where things is from
 (defn- qualify-fields-and-tables-with-dataset-id [{{{:keys [dataset-id]} :details} :database, :as query}]
   (walk/postwalk (fn [x]
@@ -318,18 +314,16 @@
                      :else                                                      x))
                  (assoc-in query [:query :source-table :schema] dataset-id)))
 
-(defn- korma-form [query entity]
-  (sqlqp/build-korma-form driver (qualify-fields-and-tables-with-dataset-id query) entity))
+(defn- honeysql-form [query]
+  (sqlqp/build-honeysql-form driver (qualify-fields-and-tables-with-dataset-id query)))
 
-(defn- korma-form->sql [korma-form]
-  {:pre [(map? korma-form)]}
+(defn- honeysql-form->sql ^String [honeysql-form]
+  {:pre [(map? honeysql-form)]}
   ;; replace identifiers like [shakespeare].[word] with ones like [shakespeare.word] since that's what BigQuery expects
-  (try (s/replace (kdb/with-db korma-db
-                    (k/as-sql korma-form))
-                  #"\]\.\[" ".")
-       (catch Throwable e
-         (log/error (u/format-color 'red "Couldn't convert korma form to SQL:\n%s" (sqlqp/pprint-korma-form korma-form)))
-         (throw e))))
+  (let [[sql & args] (sqlqp/honeysql-form->sql+args honeysql-form)
+        sql          (s/replace sql #"\]\.\[" ".")]
+    (assert (empty? args))
+    sql))
 
 (defn- post-process-mbql [dataset-id table-name {:keys [columns rows]}]
   ;; Since we don't alias column names the come back like "veryNiceDataset_shakepeare_corpus". Strip off the dataset and table IDs
@@ -341,9 +335,9 @@
 
 (defn- mbql->native [{{{:keys [dataset-id]} :details, :as database} :database, {{table-name :name} :source-table} :query, :as query}]
   {:pre [(map? database) (seq dataset-id) (seq table-name)]}
-  (let [korma-form (korma-form query (entity dataset-id table-name))
-        sql        (korma-form->sql korma-form)]
-    (sqlqp/log-korma-form korma-form sql)
+  (let [honeysql-form (honeysql-form query)
+        sql        (honeysql-form->sql honeysql-form)]
+    #_(sqlqp/log-honeysql-form honeysql-form sql)
     {:query      sql
      :table-name table-name
      :mbql?      true}))
@@ -390,8 +384,8 @@
 (defn- field->identitfier [field]
   (k/raw (str \[ (field->alias field) \])))
 
-(defn- apply-breakout [korma-form {breakout-fields :breakout, fields-fields :fields}]
-  (-> korma-form
+(defn- apply-breakout [honeysql-form {breakout-fields :breakout, fields-fields :fields}]
+  (-> honeysql-form
       ;; Group by all the breakout fields
       ((partial apply k/group)  (map field->identitfier breakout-fields))
       ;; Add fields form only for fields that weren't specified in :fields clause -- we don't want to include it twice, or korma will barf
@@ -399,14 +393,14 @@
                                       :when (not (contains? (set fields-fields) field))]
                                   (sqlqp/as (sqlqp/formatted field) field)))))
 
-(defn- apply-order-by [korma-form {subclauses :order-by}]
-  (loop [korma-form korma-form, [{:keys [field direction]} & more] subclauses]
-    (let [korma-form (k/order korma-form (field->identitfier field) (case direction
+(defn- apply-order-by [honeysql-form {subclauses :order-by}]
+  (loop [honeysql-form honeysql-form, [{:keys [field direction]} & more] subclauses]
+    (let [honeysql-form (k/order honeysql-form (field->identitfier field) (case direction
                                                                       :ascending  :ASC
                                                                       :descending :DESC))]
       (if (seq more)
-        (recur korma-form more)
-        korma-form))))
+        (recur honeysql-form more)
+        honeysql-form))))
 
 
 (defrecord BigQueryDriver []

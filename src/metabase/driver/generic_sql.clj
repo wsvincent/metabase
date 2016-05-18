@@ -52,7 +52,7 @@
     "Given a `Database` DETAILS-MAP, return a JDBC connection spec.")
 
   (current-datetime-fn [this]
-    "*OPTIONAL*. Korma form that should be used to get the current `DATETIME` (or equivalent). Defaults to `(k/sqlfn* :NOW)`.")
+    "*OPTIONAL*. Korma form that should be used to get the current `DATETIME` (or equivalent). Defaults to `:%now`.")
 
   (date [this, ^Keyword unit, field-or-value]
     "Return a korma form for truncating a date or timestamp field or value to a given resolution, or extracting a date component.")
@@ -66,10 +66,24 @@
 
      Return `nil` to prevent FIELD from being aliased.")
 
+  ;; TODO This is only used by unit tests, I think; confirm this and move to `metabase.test.data.generic-sql`
+  (prepare-identifier [this, ^String identifier]
+    "*OPTIONAL*. Prepare an identifier, such as a Table or Field name, when it is used in a SQL query.
+     This is used by drivers like H2 to transform names to upper-case.
+     The default implementation is `identity`.")
+
   (prepare-value [this, ^Value value]
     "*OPTIONAL*. Prepare a value (e.g. a `String` or `Integer`) that will be used in a korma form. By default, this returns VALUE's `:value` as-is, which
      is eventually passed as a parameter in a prepared statement. Drivers such as BigQuery that don't support prepared statements can skip this
      behavior by returning a korma `raw` form instead, or other drivers can perform custom type conversion as appropriate.")
+
+  (quote-style ^clojure.lang.Keyword [this]
+    "*OPTIONAL*. Return the quoting style that should be used by [HoneySQL](https://github.com/jkk/honeysql) when building a SQL statement.
+      Defaults to `:ansi`, but other valid options are `:mysql`, `:sqlserver`, `:oracle`, and `:h2` (added in `metabase.util.honeysql-extensions`;
+      like `:ansi`, but uppercases the result).
+
+        (hsql/format ... :quoting (quote-style driver))")
+
 
   (set-timezone-sql ^String [this]
     "*OPTIONAL*. This should be a prepared JDBC SQL statement string to be used to set the timezone for the current transaction.
@@ -147,10 +161,7 @@
 
 (defn- can-connect? [driver details]
   (let [connection (connection-details->spec driver details)]
-    (= 1 (-> (k/exec-raw connection "SELECT 1" :results)
-             first
-             vals
-             first))))
+    (= 1 (first (vals (first (jdbc/query connection ["SELECT 1"])))))))
 
 (defn pattern-based-column->base-type
   "Return a `column->base-type` function that matches types based on a sequence of pattern / base-type pairs."
@@ -325,10 +336,12 @@
    :apply-order-by          (resolve 'metabase.driver.generic-sql.query-processor/apply-order-by)
    :apply-page              (resolve 'metabase.driver.generic-sql.query-processor/apply-page)
    :column->special-type    (constantly nil)
-   :current-datetime-fn     (constantly (k/sqlfn* :NOW))
+   :current-datetime-fn     (constantly :%now)
    :excluded-schemas        (constantly nil)
    :field->alias            (u/drop-first-arg name)
+   :prepare-identifier      (u/drop-first-arg identity)
    :prepare-value           (u/drop-first-arg :value)
+   :quote-style             (constantly :ansi)
    :set-timezone-sql        (constantly nil)
    :stddev-fn               (constantly :STDDEV)})
 

@@ -181,6 +181,7 @@
           :connection-details->spec  (u/drop-first-arg connection-details->spec)
           :date                      (u/drop-first-arg date)
           :excluded-schemas          (constantly #{"INFORMATION_SCHEMA"})
+          :quote-style               (constantly :mysql)
           :string-length-fn          (constantly :CHAR_LENGTH)
           ;; If this fails you need to load the timezone definitions from your system into MySQL;
           ;; run the command `mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root mysql`
