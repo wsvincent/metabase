@@ -31,6 +31,8 @@
 
 (defn- driver [] (:driver *query*))
 
+;; register the function "distinct-count" with HoneySQL
+;; (hsql/format :%distinct-count.x) -> "count(distinct x)"
 (defmethod hformat/fn-handler "distinct-count" [_ field]
   (str "count(distinct " (hformat/to-sql field) ")"))
 
@@ -277,9 +279,10 @@
   [honeysql-form]
   {:pre [(map? honeysql-form)]}
   (binding [hformat/*subquery?* false]
-    (hsql/format honeysql-form
-      :quoting             (sql/quote-style (driver))
-      :allow-dashed-names? true)))
+    (u/prog1 (hsql/format honeysql-form
+               :quoting             (sql/quote-style (driver))
+               :allow-dashed-names? true)
+      (println "\nQUERY:" (first <>)))))
 
 (defn mbql->native
   "Transpile MBQL query into a native SQL statement."

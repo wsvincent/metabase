@@ -111,6 +111,8 @@
     :seconds      (hsql/call :to_timestamp expr)
     :milliseconds (recur (hx// expr 1000) :seconds)))
 
+;; register the postgres `extract` function with HoneySQL
+;; (hsql/format (hsql/call :pg-extract :a :b)) -> "extract(a from b)"
 (defmethod hformat/fn-handler "pg-extract" [_ unit expr]
   (str "extract(" (name unit) " from " (hformat/to-sql expr) ")"))
 
