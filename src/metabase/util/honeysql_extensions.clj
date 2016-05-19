@@ -65,6 +65,11 @@
   [c x]
   (hsql/call :cast x (hsql/raw (name c))))
 
+(defn format
+  "SQL `FORMAT` function."
+  [format-str expr]
+  (hsql/call :format expr (literal format-str)))
+
 (defn ->date                     "CAST X to a `date`."                     [x] (cast :date x))
 (defn ->datetime                 "CAST X to a `datetime`."                 [x] (cast :datetime x))
 (defn ->timestamp                "CAST X to a `timestamp`."                [x] (cast :timestamp x))

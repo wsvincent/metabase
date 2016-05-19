@@ -84,7 +84,7 @@
      Uses `sql/connection-details->spec` by default.")
 
   (load-data! [this, ^DatabaseDefinition dbdef, ^TableDefinition tabledef]
-    "*Optional*. Load the rows for a specific table into a DB.")
+    "*Optional*. Load the rows for a specific table into a DB. `load-data-chunked` is the default implementation.")
 
   (execute-sql! [driver ^Keyword context, ^DatabaseDefinition dbdef, ^String sql]
     "Execute a string of raw SQL. Context is either `:server` or `:db`."))
@@ -142,10 +142,8 @@
   (str \" nm \"))
 
 (defn- quote+combine-names [driver names]
-  (->> names
-       (map (partial quote-name driver))
-       (interpose \.)
-       (apply str)))
+  (apply str (interpose \. (for [n names]
+                             (name (hx/qualify-and-escape-dots (quote-name driver n)))))))
 
 (defn- default-qualify+quote-name
   ([driver db-name]
@@ -211,23 +209,25 @@
 (defn- do-insert!
   "Insert ROWS-OR-ROWS into TABLE-NAME for the DRIVER database defined by SPEC."
   [driver spec table-name row-or-rows]
-  (let [prepare-key (comp keyword hx/qualify-and-escape-dots (partial sql/prepare-identifier driver) name)
+  (let [prepare-key (comp keyword (partial sql/prepare-identifier driver) name)
         rows        (if (sequential? row-or-rows)
                       row-or-rows
                       [row-or-rows])
         columns     (keys (first rows))
-        values      (vec (for [row rows]
-                           (mapv row columns)))
-        hsql-form   (-> (apply h/columns (map prepare-key columns))
+        values      (for [row rows]
+                      (for [value (map row columns)]
+                        (sql/prepare-value driver {:value value})))
+        hsql-form   (-> (apply h/columns (for [column columns]
+                                           (hx/qualify-and-escape-dots (prepare-key column))))
                         (h/insert-into (prepare-key table-name))
                         (h/values values))
-        sql+args    (binding [hformat/*subquery?* false]
-                      (hsql/format hsql-form
-                        :quoting             (sql/quote-style driver)
-                        :allow-dashed-names? true))]
-    (try (jdbc/execute! spec (hx/unescape-dots sql+args))
+        sql+args    (hx/unescape-dots (binding [hformat/*subquery?* false]
+                                        (hsql/format hsql-form
+                                          :quoting             (sql/quote-style driver)
+                                          :allow-dashed-names? true)))]
+    (try (jdbc/execute! spec sql+args)
          (catch java.sql.SQLException e
-           (println (u/format-color 'red "INSERT FAILED:"))
+           (println (u/format-color 'red "INSERT FAILED: \n%s\n" sql+args))
            (jdbc/print-sql-exception-chain e)))))
 
 (defn make-load-data-fn
@@ -235,11 +235,10 @@
    the calls the resulting function with the rows to insert."
   [& wrap-insert-fns]
   (fn [driver dbdef tabledef]
-    (let [entity      (korma-entity driver dbdef tabledef)
-          spec        (database->spec driver :db dbdef)
-          prepare-key (get-in entity [:db :options :naming :fields])
-          insert!     ((apply comp wrap-insert-fns) (partial do-insert! driver spec (:table entity)))
-          rows        (load-data-get-rows driver dbdef tabledef)]
+    (let [entity  (korma-entity driver dbdef tabledef)
+          spec    (database->spec driver :db dbdef)
+          insert! ((apply comp wrap-insert-fns) (partial do-insert! driver spec (:table entity)))
+          rows    (load-data-get-rows driver dbdef tabledef)]
       (insert! rows))))
 
 (def load-data-all-at-once!             "Insert all rows at once."                             (make-load-data-fn))
@@ -323,7 +322,7 @@
           (swap! statements conj (add-fk-sql driver dbdef tabledef fielddef)))))
 
     ;; exec the combined statement
-    (execute-sql! driver :db dbdef (u/prog1 (apply str (interpose ";\n" @statements))
+    (execute-sql! driver :db dbdef (u/prog1 (apply str (interpose ";\n" (map hx/unescape-dots @statements)))
                                      (println (u/format-color 'blue "\n---------------------------------------- Create Tables: %s (%s)----------------------------------------\n%s"
                                                 (:database-name dbdef) (name driver) <>)))))
 
@@ -361,4 +360,4 @@
   (datasets/when-testing-engine engine
     (println (u/format-color 'blue "[%s] %s" (name engine) (first sql-and-args)))
     (u/prog1 (jdbc/query (get-connection-spec) sql-and-args)
-      (println (u/format-color 'blue "[OK] -> %s" (doall <>))))))
+      (println (u/format-color 'blue "[OK] -> %s" (vec <>))))))

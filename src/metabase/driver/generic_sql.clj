@@ -32,14 +32,14 @@
   ;; The following apply-* methods define how the SQL Query Processor handles given query clauses. Each method is called when a matching clause is present
   ;; in QUERY, and should return an appropriately modified version of KORMA-QUERY. Most drivers can use the default implementations for all of these methods,
   ;; but some may need to override one or more (e.g. SQL Server needs to override the behavior of `apply-limit`, since T-SQL uses `TOP` instead of `LIMIT`).
-  (apply-aggregation [this korma-query, ^Map query] "*OPTIONAL*.")
-  (apply-breakout    [this korma-query, ^Map query] "*OPTIONAL*.")
-  (apply-fields      [this korma-query, ^Map query] "*OPTIONAL*.")
-  (apply-filter      [this korma-query, ^Map query] "*OPTIONAL*.")
-  (apply-join-tables [this korma-query, ^Map query] "*OPTIONAL*.")
-  (apply-limit       [this korma-query, ^Map query] "*OPTIONAL*.")
-  (apply-order-by    [this korma-query, ^Map query] "*OPTIONAL*.")
-  (apply-page        [this korma-query, ^Map query] "*OPTIONAL*.")
+  (apply-aggregation [this honeysql-form, ^Map query] "*OPTIONAL*.")
+  (apply-breakout    [this honeysql-form, ^Map query] "*OPTIONAL*.")
+  (apply-fields      [this honeysql-form, ^Map query] "*OPTIONAL*.")
+  (apply-filter      [this honeysql-form, ^Map query] "*OPTIONAL*.")
+  (apply-join-tables [this honeysql-form, ^Map query] "*OPTIONAL*.")
+  (apply-limit       [this honeysql-form, ^Map query] "*OPTIONAL*.")
+  (apply-order-by    [this honeysql-form, ^Map query] "*OPTIONAL*.")
+  (apply-page        [this honeysql-form, ^Map query] "*OPTIONAL*.")
 
   (column->base-type ^clojure.lang.Keyword [this, ^Keyword column-type]
     "Given a native DB column type, return the corresponding `Field` `base-type`.")
