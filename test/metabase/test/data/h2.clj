@@ -55,9 +55,9 @@
 
    ;; Set DB_CLOSE_DELAY here because only admins are allowed to do it, so we can't set it via the connection string.
    ;; Set it to to -1 (no automatic closing) if the DB isn't "short-lived",
-   ;; otherwise set it to 1 (close after idling for 1 sec) so things like inserting rows persist long enough for us to
+   ;; otherwise set it to 5 (close after idling for 5 seconds) so things like inserting rows persist long enough for us to
    ;; run queries without us needing to start a connection pool
-   (format "SET DB_CLOSE_DELAY %d;" (if short-lived? 1 -1))))
+   (format "SET DB_CLOSE_DELAY %d;" (if short-lived? 5 -1))))
 
 (defn- create-table-sql [this dbdef {:keys [table-name], :as tabledef}]
   (str

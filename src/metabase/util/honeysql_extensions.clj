@@ -5,6 +5,10 @@
                       [format :as hformat]))
   (:import honeysql.format.ToSql))
 
+(alter-meta! #'honeysql.core/format assoc :style/indent 1)
+(alter-meta! #'honeysql.core/call   assoc :style/indent 1)
+
+
 ;; Add an `:h2` quote style that uppercases the identifier
 (let [quote-fns     @(resolve 'honeysql.format/quote-fns)
       ansi-quote-fn (:ansi quote-fns)]
@@ -14,6 +18,8 @@
 ;; HoneySQL automatically assumes that dots within keywords are used to separate schema / table / field / etc.
 ;; To handle weird situations where people actually put dots *within* a single identifier we'll replace those dots with lozenges,
 ;; let HoneySQL do its thing, then switch them back at the last second
+;;
+;; TODO - Maybe instead of this lozengey hackiness it would make more sense just to add a new "identifier" record type that implements `ToSql` in a more intelligent way
 (defn qualify-and-escape-dots
   "Combine several NAME-COMPONENTS into a single Keyword, and escape dots in each name by replacing them with WHITE MEDIUM LOZENGES (⬨).
 

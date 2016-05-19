@@ -171,13 +171,11 @@
     :quarter-of-year (hx/quarter expr)
     :year            (hx/year expr)))
 
-(def ^:private ^:const now :%now)
-
 ;; TODO - maybe rename this relative-date ?
 (defn- date-interval [_ unit amount]
   (if (= unit :quarter)
     (recur nil :month (hx/* amount 3))
-    (hsql/call :dateadd (hx/literal unit) amount now)))
+    (hsql/call :dateadd (hx/literal unit) amount :%now)))
 
 
 (defn- humanize-connection-error-message [_ message]

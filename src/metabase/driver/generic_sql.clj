@@ -100,6 +100,7 @@
     "Return a korma form appropriate for converting a Unix timestamp integer field or value to an proper SQL `Timestamp`.
      SECONDS-OR-MILLISECONDS refers to the resolution of the int in question and with be either `:seconds` or `:milliseconds`."))
 
+;; This does something important for the Crate driver, apparently (what?)
 (extend-protocol jdbc/IResultSetReadColumn
   (class (object-array []))
   (result-set-read-column [x _ _] (PersistentVector/adopt x)))

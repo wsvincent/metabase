@@ -228,8 +228,7 @@
     (try (jdbc/execute! spec (hx/unescape-dots sql+args))
          (catch java.sql.SQLException e
            (println (u/format-color 'red "INSERT FAILED:"))
-           (jdbc/print-sql-exception-chain e)
-           (throw e)))))
+           (jdbc/print-sql-exception-chain e)))))
 
 (defn make-load-data-fn
   "Create a `load-data!` function. This creates a function to actually insert a row or rows, wraps it with any WRAP-INSERT-FNS,
@@ -304,8 +303,10 @@
 
 (defn- create-db! [driver {:keys [table-definitions], :as dbdef}]
   ;; Exec SQL for creating the DB
-  (execute-sql! driver :server dbdef (str (drop-db-if-exists-sql driver dbdef) ";\n"
-                                          (create-db-sql driver dbdef)))
+  (execute-sql! driver :server dbdef (u/prog1 (str (drop-db-if-exists-sql driver dbdef) ";\n"
+                                                   (create-db-sql driver dbdef))
+                                       (println (u/format-color 'blue "\n---------------------------------------- Create DB: %s (%s)----------------------------------------\n%s"
+                                                  (:database-name dbdef) (name driver) <>))))
 
   ;; Build combined statement for creating tables + FKs
   (let [statements (atom [])]
@@ -322,7 +323,9 @@
           (swap! statements conj (add-fk-sql driver dbdef tabledef fielddef)))))
 
     ;; exec the combined statement
-    (execute-sql! driver :db dbdef (apply str (interpose ";\n" @statements))))
+    (execute-sql! driver :db dbdef (u/prog1 (apply str (interpose ";\n" @statements))
+                                     (println (u/format-color 'blue "\n---------------------------------------- Create Tables: %s (%s)----------------------------------------\n%s"
+                                                (:database-name dbdef) (name driver) <>)))))
 
   ;; Now load the data for each Table
   (doseq [tabledef table-definitions]
@@ -340,18 +343,22 @@
 
 ;;; ## Various Util Fns
 
-(defn- do-when-testing! [jdbc-fn engine get-connection-spec & sql-and-args]
-  (datasets/when-testing-engine engine
-    (println (u/format-color 'blue "[%s] %s" (name engine) (first sql-and-args)))
-    (jdbc-fn (get-connection-spec) sql-and-args)
-    (println (u/format-color 'blue "[OK]"))))
-
-(def ^{:arglists '([engine get-connection-spec & sql-and-args]), :style/indent 2} execute-when-testing!
+(defn execute-when-testing!
   "Execute a prepared SQL-AND-ARGS against Database with spec returned by GET-CONNECTION-SPEC only when running tests against ENGINE.
    Useful for doing engine-specific setup or teardown."
-  (partial do-when-testing! jdbc/execute!))
+  {:style/indent 2}
+  [engine get-connection-spec & sql-and-args]
+  (datasets/when-testing-engine engine
+    (println (u/format-color 'blue "[%s] %s" (name engine) (first sql-and-args)))
+    (jdbc/execute! (get-connection-spec) sql-and-args)
+    (println (u/format-color 'blue "[OK]"))))
 
-(def ^{:arglists '([engine get-connection-spec & sql-and-args]), :style/indent 2} query-when-testing!
+(defn query-when-testing!
   "Execute a prepared SQL-AND-ARGS **query** against Database with spec returned by GET-CONNECTION-SPEC only when running tests against ENGINE.
    Useful for doing engine-specific setup or teardown where `execute-when-testing!` won't work because the query returns results."
-  (partial do-when-testing! jdbc/query))
+  {:style/indent 2}
+  [engine get-connection-spec & sql-and-args]
+  (datasets/when-testing-engine engine
+    (println (u/format-color 'blue "[%s] %s" (name engine) (first sql-and-args)))
+    (u/prog1 (jdbc/query (get-connection-spec) sql-and-args)
+      (println (u/format-color 'blue "[OK] -> %s" (doall <>))))))
