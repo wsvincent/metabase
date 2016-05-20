@@ -305,7 +305,7 @@
   (execute-sql! driver :server dbdef (u/prog1 (str (drop-db-if-exists-sql driver dbdef) ";\n"
                                                    (create-db-sql driver dbdef))
                                        (println (u/format-color 'blue "\n---------------------------------------- Create DB: %s (%s)----------------------------------------\n%s"
-                                                  (:database-name dbdef) (name driver) <>))))
+                                                  (:database-name dbdef) (name driver) <>)))) ; NOCOMMIT
 
   ;; Build combined statement for creating tables + FKs
   (let [statements (atom [])]
@@ -324,7 +324,7 @@
     ;; exec the combined statement
     (execute-sql! driver :db dbdef (u/prog1 (apply str (interpose ";\n" (map hx/unescape-dots @statements)))
                                      (println (u/format-color 'blue "\n---------------------------------------- Create Tables: %s (%s)----------------------------------------\n%s"
-                                                (:database-name dbdef) (name driver) <>)))))
+                                                (:database-name dbdef) (name driver) <>))))) ; NOCOMMIT
 
   ;; Now load the data for each Table
   (doseq [tabledef table-definitions]

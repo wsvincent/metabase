@@ -282,7 +282,7 @@
     (u/prog1 (hsql/format honeysql-form
                :quoting             (sql/quote-style (driver))
                :allow-dashed-names? true)
-      (println "\nQUERY:" (u/pprint-to-str 'blue (vec <>)))))) ; NOCOMMIT
+      #_(println "\nQUERY:" (u/pprint-to-str 'blue (vec <>)))))) ; NOCOMMIT
 
 (defn mbql->native
   "Transpile MBQL query into a native SQL statement."
