@@ -29,7 +29,7 @@
   "The outer query currently being processed."
   nil)
 
-(defn- driver [] {:pre [*query*]} (:driver *query*))
+(defn- driver [] {:pre [(map? *query*)]} (:driver *query*))
 
 ;; register the function "distinct-count" with HoneySQL
 ;; (hsql/format :%distinct-count.x) -> "count(distinct x)"
@@ -220,10 +220,6 @@
       (h/limit items)
       (h/offset (* items (dec page)))))
 
-(defn- should-log-honeysql-form? []
-  (and (config/config-bool :mb-db-logging)
-       (not qp/*disable-qp-logging*)))
-
 ;; TODO - not sure "pprint" is an appropriate name for this since this function doesn't print anything
 (defn pprint-sql
   "Add newlines to the SQL to make it more readable."
@@ -279,10 +275,9 @@
   [honeysql-form]
   {:pre [(map? honeysql-form)]}
   (binding [hformat/*subquery?* false]
-    (u/prog1 (hsql/format honeysql-form
-               :quoting             (sql/quote-style (driver))
-               :allow-dashed-names? true)
-      #_(println "\nQUERY:" (u/pprint-to-str 'blue (vec <>)))))) ; NOCOMMIT
+    (hsql/format honeysql-form
+      :quoting             (sql/quote-style (driver))
+      :allow-dashed-names? true)))
 
 (defn mbql->native
   "Transpile MBQL query into a native SQL statement."

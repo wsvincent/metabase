@@ -14,7 +14,7 @@
   (kdb/postgres (merge details postgres/ssl-params))) ; always connect to redshift over SSL
 
 (defn- date-interval [unit amount]
-  (hsql/call :+ :%getdate (hsql/raw "INTERVAL '%d %s'" (int amount) (name unit))))
+  (hsql/call :+ :%getdate (hsql/raw (format "INTERVAL '%d %s'" (int amount) (name unit)))))
 
 (defn- unix-timestamp->timestamp [expr seconds-or-milliseconds]
   (case seconds-or-milliseconds

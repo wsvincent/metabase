@@ -111,7 +111,7 @@
     :milliseconds (recur (hx// expr 1000) :seconds)))
 
 (defn- date-trunc [unit expr] (hsql/call :date_trunc (hx/literal unit) expr))
-(defn- extract    [unit expr] (hsql/call :pg-extract unit              expr))
+(defn- extract    [unit expr] (hsql/call :extract    unit              expr))
 
 (def ^:private extract-integer (comp hx/->integer extract))
 

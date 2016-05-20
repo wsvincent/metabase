@@ -316,7 +316,6 @@
         sql          (s/replace (hx/unescape-dots sql) #"\]\.\[" ".")]
     (assert (empty? args)
       "BigQuery statements can't be parameterized!")
-    (println "\nBIGQUERY SQL:" sql) ; NOCOMMIT
     sql))
 
 (defn- post-process-mbql [dataset-id table-name {:keys [columns rows]}]
