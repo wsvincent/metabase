@@ -1,4 +1,4 @@
-(ns metabase.util.korma-extensions
+(ns ^:deprecated metabase.util.korma-extensions
   "Extensions and utility functions for [SQL Korma](http://www.sqlkorma.com/docs)."
   (:refer-clojure :exclude [+ - / * mod inc dec cast concat format])
   (:require [clojure.core.match :refer [match]]
@@ -53,68 +53,8 @@
   "Like `korma.db/create-entity`, but takes a sequence of name components instead; escapes dots in names as well."
   (comp k/create-entity combine+escape-name-components))
 
-;;; util fns
-
-(defn wrap
-  "Wrap form X in parentheses."
-  [x]
-  (kutils/func "(%s)" [x]))
-
-(defn infix
-  "Interpose OPERATOR between ARGS and wrap the result in parentheses.
-
-     (infix \"+\" :x :y :z) -> \"(x + y + z)\";"
-  [operator x y & more]
-  (let [x+y (kengine/infix x operator y)]
-    (if (seq more)
-      (apply infix operator x+y more)
-      (wrap x+y))))
-
-(defn math-infix
-  "Interpose OPERATOR between ARGS and wrap the result in parentheses.
-   Integer literals in ARGS are automatically wrapped in a `k/raw` form."
-  [operator & args]
-  (apply infix operator (for [arg args]
-                          (cond-> arg
-                            (number? arg) k/raw))))
-
-(def ^{:arglists '([& exprs])}  +  "Math operator. Interpose `+` between EXPRS and wrap in parentheses." (partial math-infix "+"))
-(def ^{:arglists '([& exprs])}  -  "Math operator. Interpose `-` between EXPRS and wrap in parentheses." (partial math-infix "-"))
-(def ^{:arglists '([& exprs])}  /  "Math operator. Interpose `/` between EXPRS and wrap in parentheses." (partial math-infix "/"))
-(def ^{:arglists '([& exprs])}  *  "Math operator. Interpose `*` between EXPRS and wrap in parentheses." (partial math-infix "*"))
-(def ^{:arglists '([& exprs])} mod "Math operator. Interpose `%` between EXPRS and wrap in parentheses." (partial math-infix "%"))
-
-(defn inc "Add 1 to X."        [x] (+ x 1))
-(defn dec "Subtract 1 from X." [x] (- x 1))
-
-(defn literal
-  "Wrap keyword or string S in single quotes and a korma `raw` form."
-  [s]
-  (k/raw (str \' (name s) \')))
-
 (defn cast
   "Generate a statement like `CAST(x AS c)`/"
   [c x]
   (kutils/func (clojure.core/format "CAST(%%s AS %s)" (name c))
                [x]))
-
-(defn format
-  "SQL `FORMAT` function."
-  [format-str expr]
-  (k/sqlfn :FORMAT expr (literal format-str)))
-
-(defn ->date                     "CAST X to a `DATE`."                     [x] (cast :DATE x))
-(defn ->datetime                 "CAST X to a `DATETIME`."                 [x] (cast :DATETIME x))
-(defn ->timestamp                "CAST X to a `TIMESTAMP`."                [x] (cast :TIMESTAMP x))
-(defn ->timestamp-with-time-zone "CAST X to a `TIMESTAMP WITH TIME ZONE`." [x] (cast "TIMESTAMP WITH TIME ZONE" x))
-(defn ->integer                  "CAST X to a `INTEGER`."                  [x] (cast :INTEGER x))
-
-;;; Random SQL fns. Not all DBs support all these!
-(def ^{:arglists '([& exprs])} floor   "SQL `FLOOR` function."  (partial k/sqlfn* :FLOOR))
-(def ^{:arglists '([& exprs])} hour    "SQL `HOUR` function."   (partial k/sqlfn* :HOUR))
-(def ^{:arglists '([& exprs])} minute  "SQL `MINUTE` function." (partial k/sqlfn* :MINUTE))
-(def ^{:arglists '([& exprs])} week    "SQL `WEEK` function."   (partial k/sqlfn* :WEEK))
-(def ^{:arglists '([& exprs])} month   "SQL `MONTH` function."  (partial k/sqlfn* :MONTH))
-(def ^{:arglists '([& exprs])} quarter "SQL `QUARTER` function."(partial k/sqlfn* :QUARTER))
-(def ^{:arglists '([& exprs])} year    "SQL `YEAR` function."   (partial k/sqlfn* :YEAR))
-(def ^{:arglists '([& exprs])} concat  "SQL `CONCAT` function." (partial k/sqlfn* :CONCAT))

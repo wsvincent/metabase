@@ -29,7 +29,7 @@
   "The outer query currently being processed."
   nil)
 
-(defn- driver [] (:driver *query*))
+(defn- driver [] {:pre [*query*]} (:driver *query*))
 
 ;; register the function "distinct-count" with HoneySQL
 ;; (hsql/format :%distinct-count.x) -> "count(distinct x)"
@@ -282,7 +282,7 @@
     (u/prog1 (hsql/format honeysql-form
                :quoting             (sql/quote-style (driver))
                :allow-dashed-names? true)
-      (println "\nQUERY:" (first <>)))))
+      (println "\nQUERY:" (u/pprint-to-str 'blue (vec <>)))))) ; NOCOMMIT
 
 (defn mbql->native
   "Transpile MBQL query into a native SQL statement."

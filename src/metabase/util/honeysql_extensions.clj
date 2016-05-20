@@ -15,6 +15,11 @@
   (intern 'honeysql.format 'quote-fns
           (assoc quote-fns :h2 (comp s/upper-case ansi-quote-fn))))
 
+;; register the `extract` function with HoneySQL
+;; (hsql/format (hsql/call :extract :a :b)) -> "extract(a from b)"
+(defmethod hformat/fn-handler "extract" [_ unit expr]
+  (str "extract(" (name unit) " from " (hformat/to-sql expr) ")"))
+
 ;; HoneySQL automatically assumes that dots within keywords are used to separate schema / table / field / etc.
 ;; To handle weird situations where people actually put dots *within* a single identifier we'll replace those dots with lozenges,
 ;; let HoneySQL do its thing, then switch them back at the last second
@@ -33,16 +38,17 @@
   "Unescape lozenge-escaped names in a final SQL string (or vector including params).
    Use this to undo escaping done by `qualify-and-escape-dots` after HoneySQL compiles a statement to SQL."
   ^String [sql-string-or-vector]
-  (if (string? sql-string-or-vector)
-    (s/replace sql-string-or-vector #"⬨" ".")
-    (vec (cons (unescape-dots (first sql-string-or-vector))
-               (rest sql-string-or-vector)))))
+  (when sql-string-or-vector
+    (if (string? sql-string-or-vector)
+      (s/replace sql-string-or-vector #"⬨" ".")
+      (vec (cons (unescape-dots (first sql-string-or-vector))
+                 (rest sql-string-or-vector))))))
 
 
-(defrecord Literal [s]
+(defrecord Literal [literal]
   ToSql
   (to-sql [_]
-    (str \' (name s) \')))
+    (str \' (name literal) \')))
 
 (defn literal
   "Wrap keyword or string S in single quotes and a HoneySQL `raw` form."

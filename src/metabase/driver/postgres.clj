@@ -4,8 +4,7 @@
             (clojure [set :refer [rename-keys], :as set]
                      [string :as s])
             [clojure.tools.logging :as log]
-            (honeysql [core :as hsql]
-                      [format :as hformat])
+            [honeysql.core :as hsql]
             [korma.db :as kdb]
             [metabase.driver :as driver]
             [metabase.driver.generic-sql :as sql]
@@ -110,11 +109,6 @@
   (case seconds-or-milliseconds
     :seconds      (hsql/call :to_timestamp expr)
     :milliseconds (recur (hx// expr 1000) :seconds)))
-
-;; register the postgres `extract` function with HoneySQL
-;; (hsql/format (hsql/call :pg-extract :a :b)) -> "extract(a from b)"
-(defmethod hformat/fn-handler "pg-extract" [_ unit expr]
-  (str "extract(" (name unit) " from " (hformat/to-sql expr) ")"))
 
 (defn- date-trunc [unit expr] (hsql/call :date_trunc (hx/literal unit) expr))
 (defn- extract    [unit expr] (hsql/call :pg-extract unit              expr))
